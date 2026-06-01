@@ -1,16 +1,9 @@
-/**
- * Tiny helpers around the in-cluster backend.
- *
- * Server-side: call BACKEND_URL directly (in-cluster DNS, no public hop).
- * The Next.js rewrites in next.config.ts handle /api/* from the browser.
- */
-const BACKEND = process.env.BACKEND_URL ?? "http://localhost:8000";
+"use client";
 
-export async function fetchFeed(): Promise<Post[]> {
-  const r = await fetch(`${BACKEND}/api/feed`, { cache: "no-store" });
-  if (!r.ok) return [];
-  return r.json();
-}
+/**
+ * Browser-side API helpers. All calls hit /api/* on this same origin;
+ * the nginx in front of us proxies that to the backend KSvc.
+ */
 
 export type Post = {
   id: string;
@@ -20,19 +13,26 @@ export type Post = {
   created_at: string;
 };
 
-export type Me = {
-  id: string;
-  coders_id: string;
-  display_name: string;
-  first_seen_at: string;
-};
+export async function fetchFeed(): Promise<Post[]> {
+  const r = await fetch("/api/feed", { credentials: "include" });
+  if (!r.ok) return [];
+  return r.json();
+}
 
-/** Server-side fetch of /api/me — forwards the X-Coders-User header so
- * the backend sees the same identity the gate stamped on us. */
-export async function fetchMe(codersId: string): Promise<Me | null> {
-  const r = await fetch(`${BACKEND}/api/me`, {
-    cache: "no-store",
-    headers: { "X-Coders-User": codersId },
+export async function fetchUserPosts(userId: string): Promise<Post[]> {
+  const r = await fetch(`/api/users/${userId}/posts`, {
+    credentials: "include",
+  });
+  if (!r.ok) return [];
+  return r.json();
+}
+
+export async function createPost(body: string): Promise<Post | null> {
+  const r = await fetch("/api/posts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ body }),
   });
   if (!r.ok) return null;
   return r.json();

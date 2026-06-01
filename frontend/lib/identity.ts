@@ -1,34 +1,67 @@
-/**
- * Read the visitor's coders.kr UUID from the request headers.
- *
- * The platform gate validates the `coders_session` cookie *before* the
- * request reaches Next.js, and stamps the identity as `X-Coders-User`
- * on the way in. This helper just reads that header inside a Server
- * Component or route handler — no fetching, no client-side state.
- *
- * Returns null if the visitor is anonymous.
- */
-import { headers } from "next/headers";
+"use client";
 
-export async function getCodersUser(): Promise<string | null> {
-  const h = await headers();
-  const v = h.get("x-coders-user");
-  return v && v.length > 0 ? v : null;
+/**
+ * Client-side identity helpers.
+ *
+ * The platform gate validates the visitor's `coders_session` cookie at
+ * the edge and stamps `X-Coders-User` onto every request that reaches
+ * the backend. A static SPA can't read that header (it's HTML, not a
+ * server), so we discover identity by fetching `/api/me` and looking
+ * at the response:
+ *    200 → signed in (the gate forwarded the user, the backend echoed
+ *          a row out of its own users table)
+ *    401 → anonymous
+ */
+
+import { useEffect, useState } from "react";
+
+export type Me = {
+  id: string;
+  coders_id: string;
+  display_name: string;
+  first_seen_at: string;
+};
+
+// `undefined` = still loading; `null` = anonymous; Me = signed in.
+export type MeState = Me | null | undefined;
+
+export function useMe(): MeState {
+  const [me, setMe] = useState<MeState>(undefined);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/me", { credentials: "include" })
+      .then(async (r) => {
+        if (!alive) return;
+        if (r.ok) setMe(await r.json());
+        else setMe(null);
+      })
+      .catch(() => {
+        if (alive) setMe(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return me;
 }
 
-/**
- * Build a URL that bounces the visitor through the platform sign-in
- * page and back to `returnTo` (or the current page) after they sign in.
- *
- * The platform validates `return_to`: only relative paths and
- * `https://*.coders.kr/...` URLs are accepted.
- */
+function currentLocation(): string {
+  if (typeof window === "undefined") return "/";
+  return window.location.pathname + window.location.search;
+}
+
+function buildHref(path: string, returnTo?: string): string {
+  const target = returnTo ?? currentLocation();
+  const here =
+    typeof window === "undefined" ? "" : window.location.origin;
+  const absolute = target.startsWith("http") ? target : here + target;
+  return `https://mcp.coders.kr${path}?return_to=${encodeURIComponent(absolute)}`;
+}
+
 export function signInHref(returnTo?: string): string {
-  const target = returnTo ?? "/";
-  return `https://mcp.coders.kr/sso/login?return_to=${encodeURIComponent(target)}`;
+  return buildHref("/sso/login", returnTo);
 }
 
 export function signOutHref(returnTo?: string): string {
-  const target = returnTo ?? "/";
-  return `https://mcp.coders.kr/sso/logout?return_to=${encodeURIComponent(target)}`;
+  return buildHref("/sso/logout", returnTo);
 }

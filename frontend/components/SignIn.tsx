@@ -1,3 +1,5 @@
+"use client";
+
 import { signInHref, signOutHref } from "@/lib/identity";
 
 export function SignInLink({ returnTo }: { returnTo?: string }) {

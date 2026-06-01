@@ -13,13 +13,17 @@ mode: native
 
 services:
   web:
+    # Pre-rendered SPA served by nginx: `out/` from `next build` (with
+    # `output: "export"` in next.config.ts) baked into an nginx:alpine
+    # image. Static identical bytes for every visitor → CF caches the
+    # HTML at the edge; identity + data are fetched client-side via
+    # /api/* (nginx proxies those to the backend).
     dockerfile: frontend/Dockerfile
     context: frontend
-    port: 3000
+    port: 80
     expose: public
     env:
       BACKEND_URL: ${api.internal_url}
-      NODE_ENV: production
 
   api:
     dockerfile: backend/Dockerfile
