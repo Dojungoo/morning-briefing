@@ -8,9 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { createPost, fetchFeed, type Post } from "@/lib/api";
 import { useMe } from "@/lib/identity";
-import { useDelayedFlag } from "@/lib/useDelayedFlag";
 import { SignInLink } from "./SignIn";
-import { WarmingBanner } from "./WarmingBanner";
 
 const MAX_BODY = 280;
 
@@ -130,18 +128,10 @@ export function Feed() {
 }
 
 function FeedLoading() {
-  // Show a "warming up" hint if the fetch is still pending after 5s.
-  // The api KSvc scales to zero; the first hit after idle pays a cold
-  // start. nginx in front of us holds the request for up to 90s, which
-  // is always enough for the api to come up.
-  const warming = useDelayedFlag(5000, true);
+  // Warming hint moved to the top-level WarmingBar in layout.tsx so
+  // it covers every page consistently. Here we just stack skeletons.
   return (
     <>
-      {warming && (
-        <li>
-          <WarmingBanner />
-        </li>
-      )}
       <li>
         <Skeleton className="h-16 w-full" />
       </li>

@@ -15,6 +15,8 @@
 
 import { useEffect, useState } from "react";
 
+import { tracked } from "./warming";
+
 export type Me = {
   id: string;
   coders_id: string;
@@ -29,15 +31,14 @@ export function useMe(): MeState {
   const [me, setMe] = useState<MeState>(undefined);
   useEffect(() => {
     let alive = true;
-    fetch("/api/me", { credentials: "include" })
-      .then(async (r) => {
-        if (!alive) return;
-        if (r.ok) setMe(await r.json());
-        else setMe(null);
-      })
-      .catch(() => {
-        if (alive) setMe(null);
-      });
+    tracked(async () => {
+      const r = await fetch("/api/me", { credentials: "include" });
+      if (!alive) return;
+      if (r.ok) setMe(await r.json());
+      else setMe(null);
+    }).catch(() => {
+      if (alive) setMe(null);
+    });
     return () => {
       alive = false;
     };

@@ -1,23 +1,35 @@
+"use client";
+
 import { Snowflake } from "lucide-react";
 
+import { useWarming } from "@/lib/warming";
+
 /**
- * Friendly heads-up shown while a tenant API request is in flight for
- * more than ~5s. The api KSvc scales to zero when idle, and the first
- * request after a quiet period spins up a fresh pod (alembic + uvicorn
- * boot, ~30-60s). The SPA fetch will eventually succeed — this banner
- * is purely so the visitor knows they're not stuck.
+ * Full-width heads-up at the top of every page. Activates after any
+ * tracked fetch has been in flight for ~5s (lib/warming.ts) — covers
+ * the cold-start path where the api KSvc is waking up.
+ *
+ * Stays inert at SSR / first paint; only the client-mounted effect
+ * decides to show anything.
  */
-export function WarmingBanner() {
+export function WarmingBar() {
+  const warming = useWarming();
+  if (!warming) return null;
   return (
-    <div className="flex items-start gap-3 rounded-md border border-dashed bg-muted/40 px-4 py-3 text-[13px]">
-      <Snowflake className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-      <div>
-        <div className="font-medium">Warming up the server</div>
-        <p className="mt-0.5 text-muted-foreground">
-          This site idles between visits to save power. The first request
-          after a quiet period takes ~30s while the backend wakes up —
-          it&apos;ll finish loading on its own.
-        </p>
+    <div
+      role="status"
+      aria-live="polite"
+      className="border-b bg-muted/60 px-6 sm:px-8 py-2.5 text-[13px] text-foreground/80"
+    >
+      <div className="mx-auto flex max-w-3xl items-center gap-2">
+        <Snowflake className="size-4 shrink-0 text-muted-foreground" />
+        <span>
+          <span className="font-medium">Warming up the server.</span>{" "}
+          <span className="text-muted-foreground">
+            This site idles between visits — first request takes ~30s while
+            the backend wakes up.
+          </span>
+        </span>
       </div>
     </div>
   );
