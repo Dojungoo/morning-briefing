@@ -6,7 +6,9 @@ import { useEffect, useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchUserPosts, type Post } from "@/lib/api";
 import { useMe } from "@/lib/identity";
+import { useDelayedFlag } from "@/lib/useDelayedFlag";
 import { SignInLink } from "./SignIn";
+import { WarmingBanner } from "./WarmingBanner";
 
 export function Profile() {
   const me = useMe();
@@ -17,9 +19,15 @@ export function Profile() {
     fetchUserPosts(me.id).then(setPosts);
   }, [me]);
 
+  // While me / posts are loading, show the warming hint if the api is
+  // taking a while (same cold-start story as the Feed page).
+  const meWarming = useDelayedFlag(5000, me === undefined);
+  const postsWarming = useDelayedFlag(5000, me !== null && posts === null);
+
   if (me === undefined) {
     return (
       <div className="space-y-3 pt-4">
+        {meWarming && <WarmingBanner />}
         <Skeleton className="h-9 w-44" />
         <Skeleton className="h-24 w-full" />
       </div>
@@ -71,9 +79,16 @@ export function Profile() {
         </h2>
         <ul className="space-y-1">
           {posts === null && (
-            <li>
-              <Skeleton className="h-16 w-full" />
-            </li>
+            <>
+              {postsWarming && (
+                <li>
+                  <WarmingBanner />
+                </li>
+              )}
+              <li>
+                <Skeleton className="h-16 w-full" />
+              </li>
+            </>
           )}
           {posts && posts.length === 0 && (
             <li className="rounded-md border border-dashed bg-muted/40 px-5 py-6 text-center text-[13px] text-muted-foreground">

@@ -52,7 +52,14 @@ server {
     proxy_set_header   X-Forwarded-Host $host;
     # Forward the platform gate's identity header straight through.
     proxy_pass_request_headers on;
-    proxy_read_timeout 30s;
+    # Hold the request through a cold-start of the api KSvc (scale-to-zero,
+    # spinning up a fresh pod runs `alembic upgrade head` + uvicorn boot in
+    # ~30-60s the first time). The SPA shows a "Warming up" banner after
+    # 5s so the user knows what's happening; nginx just needs to not 504
+    # before the api can actually answer.
+    proxy_connect_timeout 5s;
+    proxy_send_timeout 90s;
+    proxy_read_timeout 90s;
   }
 
   # Static assets get a long browser cache; CF caches them globally too.
