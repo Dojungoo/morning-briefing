@@ -2,24 +2,34 @@
 
 import { Snowflake } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { useWarming } from "@/lib/warming";
 
 /**
- * Full-width heads-up at the top of every page. Activates after any
- * tracked fetch has been in flight for ~5s (lib/warming.ts) — covers
- * the cold-start path where the api KSvc is waking up.
+ * Top-of-page heads-up while any tracked fetch (lib/warming.ts) has been
+ * in flight for ~5s — i.e. the api KSvc is cold-starting.
  *
- * Stays inert at SSR / first paint; only the client-mounted effect
- * decides to show anything.
+ * Fixed-positioned over the layout so it never pushes the page content
+ * down. Opacity transitions 0 → 75 so the banner reveals smoothly and
+ * still lets the content underneath read through.
+ *
+ * `pointer-events-none` keeps clicks falling through to whatever is
+ * below — purely decorative.
+ *
+ * Stays inert at SSR; only after hydration does the client-side
+ * `useWarming` flip it on.
  */
 export function WarmingBar() {
   const warming = useWarming();
-  if (!warming) return null;
   return (
     <div
       role="status"
       aria-live="polite"
-      className="border-b bg-muted/60 px-6 sm:px-8 py-2.5 text-[13px] text-foreground/80"
+      aria-hidden={!warming}
+      className={cn(
+        "pointer-events-none fixed inset-x-0 top-0 z-40 border-b bg-background/95 backdrop-blur-sm px-6 sm:px-8 py-2.5 text-[13px] text-foreground/80 transition-opacity duration-500",
+        warming ? "opacity-75" : "opacity-0"
+      )}
     >
       <div className="mx-auto flex max-w-3xl items-center gap-2">
         <Snowflake className="size-4 shrink-0 text-muted-foreground" />
