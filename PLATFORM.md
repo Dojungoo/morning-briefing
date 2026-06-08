@@ -326,6 +326,22 @@ validation), and a worked example is at
 
 ---
 
+## 10. Push-to-deploy (optional)
+
+By default a deploy only happens when you call `deploy()`. You can opt a
+project into **auto-deploy on push**: `set_auto_deploy('<name>', branch='main')`
+makes every push to that branch rebuild + roll a new revision automatically
+(same pipeline as `deploy()`), so `push = live`. `disable_auto_deploy('<name>')`
+turns it back off; `status('<name>')` shows the current `auto_deploy_branch`.
+Manual `deploy()` always works as an override.
+
+Requires the `coders-kr` GitHub App (already installed if you've deployed a
+private repo) to be subscribed to **Push events** — a one-time operator
+toggle on the App. If pushes don't trigger a deploy, that subscription is
+the thing to check.
+
+---
+
 ## TL;DR
 
 - Trust `X-Coders-User`; never build login; link to `mcp.coders.kr/sso/*`.
