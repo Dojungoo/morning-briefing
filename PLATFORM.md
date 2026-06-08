@@ -288,7 +288,8 @@ are billed at 1/10th). The proxy clamps `max_tokens` to 16,000 per request.
   every Claude call or it bills the anonymous pool. Tokens are the priciest
   axis — a $3 pool ≈ 140 Sonnet turns.
 - Build at image time so cold starts stay fast.
-- **Hit friction deploying? Call the `report_issue` MCP tool** — any error you
-  worked around, confusing message, or doc that didn't match reality. Report it
-  whether it's your mistake, the platform's, or this template's; the maintainers
-  triage. Don't self-censor.
+- **Hit friction deploying? File it** at the public tracker:
+  `gh issue create --repo cykim8811/coders-feedback ...` (any error you worked
+  around, confusing message, doc that didn't match reality — whether it's your
+  mistake, the platform's, or this template's; the maintainers triage, don't
+  self-censor). No `gh`? Use the `report_issue` MCP tool as a fallback.
