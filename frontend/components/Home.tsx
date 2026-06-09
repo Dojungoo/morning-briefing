@@ -5,7 +5,7 @@ import { Newspaper, RefreshCw, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { fetchLatest, generateBriefing, type Briefing } from "@/lib/api";
+import { fetchLatest, generateBriefing, pollBriefing, type Briefing } from "@/lib/api";
 import { useMe } from "@/lib/identity";
 import { BriefingView } from "./BriefingView";
 import { SignInLink } from "./SignIn";
@@ -25,7 +25,11 @@ export function Home() {
     setError(null);
     setGenerating(true);
     try {
-      const fresh = await generateBriefing();
+      // Generation is async server-side: POST returns a pending row, then we
+      // poll until it's filled in (crawl + LLM can run past the ~50s gateway
+      // cap, so it can't be a single blocking request).
+      const pending = await generateBriefing();
+      const fresh = await pollBriefing(pending.id);
       setBriefing(fresh);
     } catch (e) {
       setError((e as Error).message);

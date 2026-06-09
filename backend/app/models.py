@@ -56,6 +56,14 @@ class Briefing(Base):
     author_id: Mapped[uuid.UUID] = mapped_column(
         sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    # Generation lifecycle. A POST /generate persists a "pending" row and
+    # returns immediately; a detached task crawls + summarises and flips this
+    # to "ready" (or "failed"). The browser polls until it leaves "pending".
+    # Synchronous generation would blow past the platform's ~50s request cap
+    # (PLATFORM.md §5d). Existing rows default to "ready".
+    status: Mapped[str] = mapped_column(
+        sa.String(16), nullable=False, default="ready", server_default="ready"
+    )
     # The trading/news day this issue covers (local KST date at generation).
     issue_date: Mapped[date] = mapped_column(sa.Date, nullable=False, index=True)
     # AI one-liner — the editorial hook at the top of the page.

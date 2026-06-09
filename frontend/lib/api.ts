@@ -37,6 +37,7 @@ export type Indicator = {
 
 export type Briefing = {
   id: string;
+  status: "pending" | "ready" | "failed";
   issue_date: string;
   insight: string;
   sections: BriefingSection[];
@@ -78,6 +79,12 @@ export async function fetchBriefing(id: string): Promise<Briefing | null> {
   });
 }
 
+/**
+ * Kick off generation. The backend returns a *pending* briefing immediately
+ * (202) — the crawl + LLM work runs detached server-side because it can
+ * exceed the platform's ~50s request cap. Poll {@link pollBriefing} on the
+ * returned id to get the finished issue.
+ */
 export async function generateBriefing(): Promise<Briefing> {
   return tracked(async () => {
     const r = await fetch("/api/briefing/generate", {
@@ -97,4 +104,26 @@ export async function generateBriefing(): Promise<Briefing> {
     }
     return r.json();
   });
+}
+
+/**
+ * Poll a pending briefing until it leaves "pending". The recurring GETs also
+ * keep the (scale-to-zero) backend pod warm while it works. Resolves with the
+ * "ready" briefing, or throws on "failed" / timeout.
+ */
+export async function pollBriefing(
+  id: string,
+  { intervalMs = 2500, timeoutMs = 180_000 }: { intervalMs?: number; timeoutMs?: number } = {},
+): Promise<Briefing> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    const b = await fetchBriefing(id);
+    if (b && b.status !== "pending") {
+      if (b.status === "failed")
+        throw new Error("브리핑 생성에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+      return b;
+    }
+  }
+  throw new Error("브리핑 생성이 지연되고 있습니다. 잠시 후 새로고침해 주세요.");
 }
