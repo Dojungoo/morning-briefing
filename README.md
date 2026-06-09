@@ -71,7 +71,13 @@ proxy if you need to exercise the signed-in path.
 
 ## Deploying
 
-In Claude Code, with the coders.kr MCP installed:
+This repo ships a [`.mcp.json`](./.mcp.json) that points Claude Code at the
+coders.kr MCP server (`https://mcp.coders.kr/mcp`). The first time you open
+the project, Claude Code asks you to approve the server and walks you through
+a one-time browser sign-in — after that the deploy/manage tools are available
+in the session. (No `claude mcp add` needed.)
+
+Then, in Claude Code:
 
 ```
 deploy https://github.com/<you>/<your-fork>
