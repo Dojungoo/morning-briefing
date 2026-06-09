@@ -12,21 +12,23 @@ export function Header() {
     <header className="flex items-center justify-between py-5">
       <Link
         href="/"
-        className="text-[15px] font-semibold tracking-tight transition-colors hover:text-muted-foreground"
+        className="flex items-center gap-2 text-[15px] font-semibold tracking-tight transition-colors hover:text-muted-foreground"
       >
-        template-coders
+        <span aria-hidden className="text-base">📈</span>
+        모닝 브리핑
       </Link>
-      <nav className="flex items-center gap-4">
+      <nav className="flex items-center gap-4 text-[13px]">
+        <Link
+          href="/archive"
+          className="text-muted-foreground transition-colors hover:text-foreground"
+        >
+          지난 브리핑
+        </Link>
         {me === undefined ? (
           <span aria-hidden className="opacity-0">·</span>
         ) : me ? (
           <>
-            <Link
-              href="/profile"
-              className="text-[13px] text-muted-foreground transition-colors hover:text-foreground"
-            >
-              {me.display_name}
-            </Link>
+            <span className="text-muted-foreground">{me.display_name}</span>
             <SignOutLink />
           </>
         ) : (

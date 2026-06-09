@@ -42,7 +42,22 @@ services:
     port: 8000
     env:
       DATABASE_URL: postgresql+asyncpg://${db.user}:${db.password}@${db.host}:${db.port}/${db.name}
+      # Managed LLM proxy (the `ai` component below). The platform injects
+      # its own Anthropic key and bills each call's tokens to the visitor's
+      # pool — we forward X-Coders-User on every call (see summarizer.py and
+      # PLATFORM.md §8). ANTHROPIC_API_KEY here is a per-tenant proxy token,
+      # not a real Anthropic key.
+      ANTHROPIC_BASE_URL: ${ai.url}
+      ANTHROPIC_API_KEY: ${ai.token}
+      LLM_MODEL: claude-sonnet-4-6
 
   db:
     type: postgres
     size: 1Gi
+
+  ai:
+    type: llm
+    # Sonnet edits the briefing prose; haiku is allow-listed as a cheaper
+    # fallback option. default_model must appear in the list.
+    models: [claude-sonnet-4-6, claude-haiku-4-5]
+    default_model: claude-sonnet-4-6

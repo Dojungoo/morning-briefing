@@ -1,7 +1,8 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -12,11 +13,8 @@ class User(Base):
 
     coders.kr already knows who this visitor is (they signed in via
     `mcp.coders.kr/sso/login`); we keep a row in our own DB the first
-    time we see them so app-local data (Posts, preferences, …) can FK
-    against a stable local UUID without joining out to the platform.
-
-    When the platform someday hands us extra profile fields, sync
-    `display_name` / `avatar_url` here on each request.
+    time we see them so app-local data can FK against a stable local
+    UUID without joining out to the platform.
     """
 
     __tablename__ = "users"
@@ -24,12 +22,9 @@ class User(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         sa.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    # The X-Coders-User value the gate sent. Unique per visitor.
     coders_id: Mapped[uuid.UUID] = mapped_column(
         sa.UUID(as_uuid=True), unique=True, nullable=False, index=True
     )
-    # Editable inside the app. Default to a short slice of coders_id so
-    # something shows up before the user picks a name.
     display_name: Mapped[str] = mapped_column(sa.String(64), nullable=False)
     first_seen_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), server_default=sa.func.now()
@@ -38,15 +33,22 @@ class User(Base):
         sa.DateTime(timezone=True), server_default=sa.func.now(), onupdate=sa.func.now()
     )
 
-    posts: Mapped[list["Post"]] = relationship(
+    briefings: Mapped[list["Briefing"]] = relationship(
         back_populates="author", cascade="all, delete-orphan"
     )
 
 
-class Post(Base):
-    """A short message authored by a logged-in user."""
+class Briefing(Base):
+    """One generated 'AI 보험·대체투자 모닝 브리핑' issue.
 
-    __tablename__ = "posts"
+    Each issue bundles the four editorial sections (보험업계 / 대체투자·PF /
+    금융지표 / 규제·리스크), a strip of market indicators, and the AI-written
+    one-line insight ('오늘의 인사이트 한 줄'). The heavy lifting — crawl,
+    summarise, compose — happens once at generation time and the result is
+    cached here so every public read is a cheap DB hit.
+    """
+
+    __tablename__ = "briefings"
 
     id: Mapped[uuid.UUID] = mapped_column(
         sa.UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
@@ -54,9 +56,20 @@ class Post(Base):
     author_id: Mapped[uuid.UUID] = mapped_column(
         sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    body: Mapped[str] = mapped_column(sa.String(280), nullable=False)
+    # The trading/news day this issue covers (local KST date at generation).
+    issue_date: Mapped[date] = mapped_column(sa.Date, nullable=False, index=True)
+    # AI one-liner — the editorial hook at the top of the page.
+    insight: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    # [{key,title,subtitle,items:[{headline,summary,source,url}]}] — 4 sections.
+    sections: Mapped[list] = mapped_column(JSONB, nullable=False)
+    # [{label,value,change,direction,note}] — market indicators strip.
+    indicators: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    # How many source headlines fed this issue (shown as a trust signal).
+    source_count: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    # Which model produced the prose (e.g. claude-sonnet-4-6 or "fallback").
+    model: Mapped[str] = mapped_column(sa.String(64), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), server_default=sa.func.now(), index=True
     )
 
-    author: Mapped[User] = relationship(back_populates="posts")
+    author: Mapped[User] = relationship(back_populates="briefings")

@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.core.database import AsyncSessionLocal
-from app.routes.posts import router as posts_router
+from app.routes.briefing import router as briefing_router
 from app.routes.users import router as users_router
 
 
@@ -15,7 +15,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="template-coders API",
+    title="AI 보험·대체투자 모닝 브리핑 API",
     version="0.1.0",
     lifespan=lifespan,
     docs_url="/api/docs",
@@ -23,7 +23,7 @@ app = FastAPI(
 )
 
 app.include_router(users_router)
-app.include_router(posts_router)
+app.include_router(briefing_router)
 
 
 @app.get("/api/health")
