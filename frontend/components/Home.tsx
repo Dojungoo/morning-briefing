@@ -60,7 +60,7 @@ export function Home() {
       </div>
 
       <AssetImg
-        src="/brand/hero.png?v=1"
+        src="/brand/hero.png?v=2"
         alt="보험·대체투자 모닝 브리핑"
         className="w-full max-h-44 rounded-xl object-cover ring-1 ring-foreground/10"
         fallback={null}
