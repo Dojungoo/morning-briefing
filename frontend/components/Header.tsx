@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { useMe } from "@/lib/identity";
+import { AssetImg } from "./AssetImg";
 import { SignInLink, SignOutLink } from "./SignIn";
 
 export function Header() {
@@ -14,7 +15,12 @@ export function Header() {
         href="/"
         className="flex items-center gap-2 text-[15px] font-semibold tracking-tight transition-colors hover:text-muted-foreground"
       >
-        <span aria-hidden className="text-base">📈</span>
+        <AssetImg
+          src="/brand/logo.png"
+          alt=""
+          className="h-6 w-6 rounded"
+          fallback={<span aria-hidden className="text-base">📈</span>}
+        />
         모닝 브리핑
       </Link>
       <nav className="flex items-center gap-4 text-[13px]">

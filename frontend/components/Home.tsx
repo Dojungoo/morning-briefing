@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fetchLatest, generateBriefing, pollBriefing, type Briefing } from "@/lib/api";
 import { useMe } from "@/lib/identity";
+import { AssetImg } from "./AssetImg";
 import { BriefingView } from "./BriefingView";
 import { SignInLink } from "./SignIn";
 
@@ -57,6 +58,13 @@ export function Home() {
           onGenerate={onGenerate}
         />
       </div>
+
+      <AssetImg
+        src="/brand/hero.png"
+        alt="보험·대체투자 모닝 브리핑"
+        className="w-full max-h-44 rounded-xl object-cover ring-1 ring-foreground/10"
+        fallback={null}
+      />
 
       {error && (
         <p className="rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3 text-[13px] text-destructive">

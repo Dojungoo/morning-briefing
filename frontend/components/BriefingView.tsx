@@ -4,6 +4,7 @@ import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import type { Briefing, BriefingSection, Indicator } from "@/lib/api";
+import { AssetImg } from "./AssetImg";
 
 const SECTION_ACCENT: Record<string, string> = {
   insurance: "bg-sky-500",
@@ -121,6 +122,12 @@ function SectionCard({
             "h-4 w-1 rounded-full",
             SECTION_ACCENT[section.key] ?? "bg-foreground/30"
           )}
+        />
+        <AssetImg
+          src={`/sections/${section.key}.png`}
+          alt=""
+          className="h-7 w-7 rounded-md object-cover ring-1 ring-foreground/10"
+          fallback={null}
         />
         <div>
           <h2 className="text-[15px] font-semibold tracking-tight">

@@ -207,45 +207,6 @@ async def generate(coders_id: UUID = Depends(require_identity)) -> BriefingOut:
     return out
 
 
-@router.get("/_gen-now", response_model=BriefingOut, status_code=202)
-async def gen_now() -> BriefingOut:
-    """TEMPORARY diagnostic: run the real generation via a public GET so it can
-    be triggered with curl (the real POST is gated behind login). Spawns the
-    same detached task as POST /generate; poll GET /briefing/{id}. Bills the
-    anonymous pool (no X-Coders-User). Remove once the LLM path is verified.
-    """
-    system_user = UUID("00000000-0000-0000-0000-000000000001")
-    async with AsyncSessionLocal() as session:
-        async with session.begin():
-            user = await upsert_local_user(session, system_user)
-            briefing = Briefing(
-                author_id=user.id,
-                issue_date=datetime.now(KST).date(),
-                insight="",
-                sections=[],
-                indicators=[],
-                source_count=0,
-                model="",
-                status="pending",
-            )
-            session.add(briefing)
-            await session.flush()
-            briefing_id = briefing.id
-        async with session.begin():
-            res = await session.execute(
-                select(Briefing)
-                .options(selectinload(Briefing.author))
-                .where(Briefing.id == briefing_id)
-            )
-            out = _to_out(res.scalar_one())
-
-    # llm_user=None → no X-Coders-User (matches the known-good keyless probe).
-    task = asyncio.create_task(_run_generation(briefing_id, None))
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
-    return out
-
-
 @router.get("/{briefing_id}", response_model=BriefingOut)
 async def get_one(
     briefing_id: UUID, session: AsyncSession = Depends(get_session)
