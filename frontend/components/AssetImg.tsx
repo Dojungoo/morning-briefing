@@ -3,12 +3,13 @@
 import { useState, type ReactNode } from "react";
 
 /**
- * Renders an image from /public, falling back gracefully if the file is
- * missing (404) so the UI never shows a broken-image icon. This lets us wire
- * the brand/logo, section-icon and hero slots ahead of time — the generated
- * (DALL·E/Midjourney) PNGs can be dropped into /public later and they light up
- * automatically, while the deterministic fallback keeps the page intact until
- * then.
+ * Renders an image from /public, but stays invisible until it actually loads —
+ * so a missing file (404, or the SPA's index.html served in its place) never
+ * flashes a broken-image box. While loading or on error we show `fallback`
+ * (an emoji for the logo, nothing for the hero/icons). This lets us wire the
+ * brand/logo, section-icon and hero slots ahead of time: drop the generated
+ * (DALL·E / Midjourney / Nano-Banana) PNGs into /public and they light up
+ * automatically, while the page stays clean until then.
  */
 export function AssetImg({
   src,
@@ -21,15 +22,18 @@ export function AssetImg({
   className?: string;
   fallback?: ReactNode;
 }) {
-  const [failed, setFailed] = useState(false);
-  if (failed) return <>{fallback}</>;
+  const [state, setState] = useState<"loading" | "ok" | "error">("loading");
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={src}
-      alt={alt}
-      className={className}
-      onError={() => setFailed(true)}
-    />
+    <>
+      {state !== "ok" && fallback}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        className={state === "ok" ? className : "hidden"}
+        onLoad={() => setState("ok")}
+        onError={() => setState("error")}
+      />
+    </>
   );
 }
