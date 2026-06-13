@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from uuid import UUID
 
 import httpx
@@ -41,8 +42,9 @@ PROMPT_TEMPLATE = """\
 
 # Output
 - 각 섹션마다 가장 중요한 항목 3~4개를 선정한다.
-- 각 항목: headline(원문 헤드라인을 다듬은 한 줄) + summary(1~2문장, 실무적 함의 포함)
-  + source + url 은 입력값을 그대로 유지한다.
+- 각 항목은 입력 항목의 id(정수)를 그대로 싣고, headline(원문을 다듬은 한 줄)과
+  summary(1~2문장, 실무적 함의 포함)만 작성한다. source·url 은 출력하지 않는다
+  (서버가 id 로 원본을 연결한다).
 - 모든 섹션을 관통하는 '오늘의 인사이트 한 줄'(insight)을 한 문장으로 작성한다.
 - 시장지표는 한 줄 코멘트(market_note)로 해석한다.
 
@@ -52,7 +54,7 @@ PROMPT_TEMPLATE = """\
   "insight": "문자열 한 문장",
   "market_note": "지표 해석 한 문장",
   "sections": [
-    {{"key":"insurance","items":[{{"headline":"","summary":"","source":"","url":""}}]}},
+    {{"key":"insurance","items":[{{"id":0,"headline":"","summary":""}}]}},
     {{"key":"alt_pf","items":[...]}},
     {{"key":"regulation","items":[...]}}
   ]
@@ -60,7 +62,7 @@ PROMPT_TEMPLATE = """\
 
 # Constraint
 - 한국어. 추측·과장·투자권유 금지. 입력에 없는 사실을 지어내지 않는다.
-- url 은 입력의 link 를 그대로 쓴다(없으면 빈 문자열).
+- id 는 반드시 입력 #INPUT 에 존재하는 정수만 사용한다(새 id 를 만들지 않는다).
 - 헤드라인이 부족한 섹션은 있는 만큼만 채운다.
 
 #INPUT
@@ -69,18 +71,21 @@ PROMPT_TEMPLATE = """\
 
 
 def _payload(sections: list[dict], indicators: list[dict]) -> str:
+    # Give every item a per-section id; the model echoes ids, not URLs, so the
+    # output stays small (no 200-char Google-News links to copy = no truncation
+    # and no link corruption). source + url are rejoined from the id in _merge.
     compact_sections = [
         {
             "key": s["key"],
             "title": s["title"],
             "items": [
                 {
+                    "id": i,
                     "headline": it["headline"],
-                    "desc": it.get("summary", ""),
+                    "desc": (it.get("summary") or "")[:160],
                     "source": it.get("source", ""),
-                    "link": it.get("url", ""),
                 }
-                for it in s["items"]
+                for i, it in enumerate(s["items"])
             ],
         }
         for s in sections
@@ -93,14 +98,27 @@ def _payload(sections: list[dict], indicators: list[dict]) -> str:
 
 
 def _extract_json(text: str) -> dict | None:
+    if not text:
+        return None
+    # Strip a ```json … ``` fence if the model added one despite instructions.
+    fence = re.search(r"```(?:json)?\s*(.+?)```", text, re.DOTALL)
+    if fence:
+        text = fence.group(1)
     start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end == -1 or end <= start:
+    if start == -1:
         return None
-    try:
-        return json.loads(text[start : end + 1])
-    except json.JSONDecodeError:
-        return None
+    # Try the greedy outer span first, then walk the closing braces inward so a
+    # bit of trailing prose after the JSON object doesn't break parsing.
+    candidates = [text.rfind("}")]
+    candidates += [m.start() for m in re.finditer(r"\}", text)][::-1]
+    for end in candidates:
+        if end is None or end <= start:
+            continue
+        try:
+            return json.loads(text[start : end + 1])
+        except json.JSONDecodeError:
+            continue
+    return None
 
 
 async def _call_llm(prompt: str, coders_user: UUID | None) -> dict | None:
@@ -118,88 +136,50 @@ async def _call_llm(prompt: str, coders_user: UUID | None) -> dict | None:
         "max_tokens": 4000,
         "messages": [{"role": "user", "content": prompt}],
     }
-    async with httpx.AsyncClient(timeout=90.0) as client:
+    # Runs inside a detached background task (not the request path), so it's not
+    # bound by the gate's ~50s cap — give the model room to finish.
+    async with httpx.AsyncClient(timeout=150.0) as client:
         r = await client.post(f"{base}/v1/messages", headers=headers, json=body)
         r.raise_for_status()
         data = r.json()
+    if data.get("stop_reason") == "max_tokens":
+        logger.warning("LLM hit max_tokens — output may be truncated")
     parts = data.get("content") or []
     text = "".join(p.get("text", "") for p in parts if p.get("type") == "text")
     return _extract_json(text)
 
 
-async def selftest() -> dict:
-    """Replicate the real generation LLM call (live data + max_tokens=4000)
-    and report stop_reason + whether the JSON parsed. Temporary diagnostic
-    for the model=fallback bug, served via a public GET (generation is a
-    gated POST we can't curl). Remove once the call path is fixed.
-    """
-    if not settings.llm_enabled:
-        return {"enabled": False}
-
-    from app.core.collectors import fetch_headlines, fetch_indicators
-
-    raw_sections = await fetch_headlines()
-    indicators = await fetch_indicators()
-    prompt = PROMPT_TEMPLATE.format(
-        persona=PERSONA, payload=_payload(raw_sections, indicators)
-    )
-
-    base = (settings.anthropic_base_url or "").rstrip("/")
-    headers = {
-        "x-api-key": settings.anthropic_api_key or "",
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
-    body = {
-        "model": settings.llm_model,
-        "max_tokens": 4000,
-        "messages": [{"role": "user", "content": prompt}],
-    }
-    url = f"{base}/v1/messages"
-    try:
-        async with httpx.AsyncClient(timeout=90.0) as client:
-            r = await client.post(url, headers=headers, json=body)
-    except Exception as exc:  # noqa: BLE001
-        return {"enabled": True, "url": url, "error_type": type(exc).__name__,
-                "error": str(exc)[:800]}
-
-    out: dict = {
-        "enabled": True,
-        "model": settings.llm_model,
-        "status_code": r.status_code,
-        "prompt_chars": len(prompt),
-    }
-    if r.status_code != 200:
-        out["body_snippet"] = r.text[:800]
-        return out
-    data = r.json()
-    parts = data.get("content") or []
-    text = "".join(p.get("text", "") for p in parts if p.get("type") == "text")
-    out["stop_reason"] = data.get("stop_reason")
-    out["usage"] = data.get("usage")
-    out["text_chars"] = len(text)
-    out["text_head"] = text[:300]
-    out["text_tail"] = text[-300:]
-    out["parsed_ok"] = _extract_json(text) is not None
-    return out
-
-
 def _merge(raw_sections: list[dict], edited: dict) -> tuple[list[dict], str]:
-    """Overlay the model's edited items onto our section scaffold."""
+    """Overlay the model's edited items onto our section scaffold.
+
+    The model returns each item's input id + the rewritten headline/summary; we
+    rejoin source + url from the original raw item by that id (the model never
+    handles the long URLs, so they can't be corrupted or truncated).
+    """
     by_key = {s["key"]: s.get("items", []) for s in edited.get("sections", [])}
     out: list[dict] = []
     for s in raw_sections:
+        raw_items = s["items"]
         items = by_key.get(s["key"]) or []
-        norm = [
-            {
-                "headline": (it.get("headline") or "").strip(),
-                "summary": (it.get("summary") or "").strip(),
-                "source": (it.get("source") or "").strip(),
-                "url": (it.get("url") or "").strip(),
-            }
-            for it in items
-            if (it.get("headline") or "").strip()
-        ]
+        norm = []
+        for it in items:
+            headline = (it.get("headline") or "").strip()
+            if not headline:
+                continue
+            idx = it.get("id")
+            orig = (
+                raw_items[idx]
+                if isinstance(idx, int) and 0 <= idx < len(raw_items)
+                else {}
+            )
+            norm.append(
+                {
+                    "headline": headline,
+                    "summary": (it.get("summary") or "").strip(),
+                    "source": (orig.get("source") or "").strip(),
+                    "url": (orig.get("url") or "").strip(),
+                }
+            )
         # If the model dropped a section, fall back to its raw headlines.
         if not norm:
             norm = _fallback_items(s["items"])

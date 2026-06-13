@@ -27,7 +27,6 @@ from sqlalchemy.orm import selectinload
 from app.core.collectors import fetch_headlines, fetch_indicators
 from app.core.database import AsyncSessionLocal, get_session
 from app.core.identity import require_identity
-from app.core.summarizer import selftest as llm_selftest
 from app.core.summarizer import summarize
 from app.models import Briefing
 from app.routes.users import upsert_local_user
@@ -112,9 +111,15 @@ async def history(
     ]
 
 
-async def _run_generation(briefing_id: UUID, coders_id: UUID) -> None:
+async def _run_generation(
+    briefing_id: UUID, llm_user: UUID | None
+) -> None:
     """Crawl → summarise → fill in the pending briefing, detached from the
     request that created it.
+
+    `llm_user` is the identity forwarded to the managed LLM for billing
+    (X-Coders-User). The gated POST passes the real visitor; the temporary
+    GET probe passes None (bills the anonymous pool, same as a keyless call).
 
     The crawl + LLM call can run well past the platform's ~50s request cap
     (PLATFORM.md §5d), so this runs as a background task with its own DB
@@ -127,7 +132,7 @@ async def _run_generation(briefing_id: UUID, coders_id: UUID) -> None:
         indicators = await fetch_indicators()
         source_count = sum(len(s["items"]) for s in raw_sections)
 
-        edited = await summarize(raw_sections, indicators, coders_id)
+        edited = await summarize(raw_sections, indicators, llm_user)
 
         sections = list(edited["sections"])
         # 4th editorial section: the markets read sits alongside the indicators.
@@ -202,10 +207,43 @@ async def generate(coders_id: UUID = Depends(require_identity)) -> BriefingOut:
     return out
 
 
-@router.get("/_llm-selftest")
-async def llm_selftest_route() -> dict:
-    """Temporary public diagnostic — one live LLM probe. Remove after fix."""
-    return await llm_selftest()
+@router.get("/_gen-now", response_model=BriefingOut, status_code=202)
+async def gen_now() -> BriefingOut:
+    """TEMPORARY diagnostic: run the real generation via a public GET so it can
+    be triggered with curl (the real POST is gated behind login). Spawns the
+    same detached task as POST /generate; poll GET /briefing/{id}. Bills the
+    anonymous pool (no X-Coders-User). Remove once the LLM path is verified.
+    """
+    system_user = UUID("00000000-0000-0000-0000-000000000001")
+    async with AsyncSessionLocal() as session:
+        async with session.begin():
+            user = await upsert_local_user(session, system_user)
+            briefing = Briefing(
+                author_id=user.id,
+                issue_date=datetime.now(KST).date(),
+                insight="",
+                sections=[],
+                indicators=[],
+                source_count=0,
+                model="",
+                status="pending",
+            )
+            session.add(briefing)
+            await session.flush()
+            briefing_id = briefing.id
+        async with session.begin():
+            res = await session.execute(
+                select(Briefing)
+                .options(selectinload(Briefing.author))
+                .where(Briefing.id == briefing_id)
+            )
+            out = _to_out(res.scalar_one())
+
+    # llm_user=None → no X-Coders-User (matches the known-good keyless probe).
+    task = asyncio.create_task(_run_generation(briefing_id, None))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return out
 
 
 @router.get("/{briefing_id}", response_model=BriefingOut)
