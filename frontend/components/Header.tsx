@@ -18,7 +18,7 @@ export function Header() {
         <AssetImg
           src="/brand/logo.png"
           alt=""
-          className="h-6 w-6 rounded"
+          className="h-6 w-6 rounded bg-white object-contain p-0.5 ring-1 ring-foreground/10"
           fallback={<span aria-hidden className="text-base">📈</span>}
         />
         모닝 브리핑
