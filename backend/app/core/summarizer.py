@@ -14,11 +14,14 @@ items, so the product never shows a blank page.
 from __future__ import annotations
 
 import json
+import logging
 from uuid import UUID
 
 import httpx
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 PERSONA = (
     "당신은 보험중개·리스크 평가 실무 15년 차 애널리스트입니다. "
@@ -212,6 +215,11 @@ async def summarize(
 ) -> dict:
     """Return {insight, market_note, sections, model}."""
     if not settings.llm_enabled:
+        logger.warning(
+            "LLM disabled (base_url_set=%s api_key_set=%s) — using fallback",
+            bool(settings.anthropic_base_url),
+            bool(settings.anthropic_api_key),
+        )
         return compose_fallback(raw_sections, indicators)
 
     prompt = PROMPT_TEMPLATE.format(
@@ -219,9 +227,20 @@ async def summarize(
     )
     try:
         edited = await _call_llm(prompt, coders_user)
+    except httpx.HTTPStatusError as exc:
+        body = exc.response.text[:500] if exc.response is not None else ""
+        logger.warning(
+            "LLM call HTTP %s using model=%s — %s",
+            exc.response.status_code if exc.response is not None else "?",
+            settings.llm_model,
+            body,
+        )
+        edited = None
     except Exception:
+        logger.exception("LLM call failed (model=%s) — using fallback", settings.llm_model)
         edited = None
     if not edited:
+        logger.warning("LLM returned no usable JSON — using fallback")
         return compose_fallback(raw_sections, indicators)
 
     sections, note = _merge(raw_sections, edited)
