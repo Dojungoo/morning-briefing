@@ -16,7 +16,7 @@ export function Header() {
         className="flex items-center gap-2 text-[15px] font-semibold tracking-tight transition-colors hover:text-muted-foreground"
       >
         <AssetImg
-          src="/brand/logo.png"
+          src="/brand/logo.png?v=1"
           alt=""
           className="h-6 w-6 rounded bg-white object-contain p-0.5 ring-1 ring-foreground/10"
           fallback={<span aria-hidden className="text-base">📈</span>}

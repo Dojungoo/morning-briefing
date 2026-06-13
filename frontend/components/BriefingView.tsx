@@ -124,7 +124,7 @@ function SectionCard({
           )}
         />
         <AssetImg
-          src={`/sections/${section.key}.png`}
+          src={`/sections/${section.key}.png?v=1`}
           alt=""
           className="h-7 w-7 rounded-md bg-white object-contain p-0.5 ring-1 ring-foreground/10"
           fallback={null}
