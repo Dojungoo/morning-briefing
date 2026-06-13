@@ -27,6 +27,7 @@ from sqlalchemy.orm import selectinload
 from app.core.collectors import fetch_headlines, fetch_indicators
 from app.core.database import AsyncSessionLocal, get_session
 from app.core.identity import require_identity
+from app.core.summarizer import selftest as llm_selftest
 from app.core.summarizer import summarize
 from app.models import Briefing
 from app.routes.users import upsert_local_user
@@ -199,6 +200,12 @@ async def generate(coders_id: UUID = Depends(require_identity)) -> BriefingOut:
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
     return out
+
+
+@router.get("/_llm-selftest")
+async def llm_selftest_route() -> dict:
+    """Temporary public diagnostic — one live LLM probe. Remove after fix."""
+    return await llm_selftest()
 
 
 @router.get("/{briefing_id}", response_model=BriefingOut)

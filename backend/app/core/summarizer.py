@@ -127,6 +127,46 @@ async def _call_llm(prompt: str, coders_user: UUID | None) -> dict | None:
     return _extract_json(text)
 
 
+async def selftest() -> dict:
+    """Make one tiny live call to the managed-LLM proxy and report exactly
+    what came back. Temporary diagnostic for the model=fallback bug — lets us
+    see the proxy's real HTTP status/body via a public GET (generation is a
+    gated POST we can't curl). Remove once the call path is fixed.
+    """
+    if not settings.llm_enabled:
+        return {"enabled": False}
+    base = (settings.anthropic_base_url or "").rstrip("/")
+    headers = {
+        "x-api-key": settings.anthropic_api_key or "",
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+    }
+    body = {
+        "model": settings.llm_model,
+        "max_tokens": 16,
+        "messages": [{"role": "user", "content": "Reply with the single word: ok"}],
+    }
+    url = f"{base}/v1/messages"
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.post(url, headers=headers, json=body)
+        return {
+            "enabled": True,
+            "model": settings.llm_model,
+            "url": url,
+            "status_code": r.status_code,
+            "body_snippet": r.text[:800],
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "enabled": True,
+            "model": settings.llm_model,
+            "url": url,
+            "error_type": type(exc).__name__,
+            "error": str(exc)[:800],
+        }
+
+
 def _merge(raw_sections: list[dict], edited: dict) -> tuple[list[dict], str]:
     """Overlay the model's edited items onto our section scaffold."""
     by_key = {s["key"]: s.get("items", []) for s in edited.get("sections", [])}
