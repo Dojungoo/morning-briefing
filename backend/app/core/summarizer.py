@@ -128,13 +128,22 @@ async def _call_llm(prompt: str, coders_user: UUID | None) -> dict | None:
 
 
 async def selftest() -> dict:
-    """Make one tiny live call to the managed-LLM proxy and report exactly
-    what came back. Temporary diagnostic for the model=fallback bug — lets us
-    see the proxy's real HTTP status/body via a public GET (generation is a
+    """Replicate the real generation LLM call (live data + max_tokens=4000)
+    and report stop_reason + whether the JSON parsed. Temporary diagnostic
+    for the model=fallback bug, served via a public GET (generation is a
     gated POST we can't curl). Remove once the call path is fixed.
     """
     if not settings.llm_enabled:
         return {"enabled": False}
+
+    from app.core.collectors import fetch_headlines, fetch_indicators
+
+    raw_sections = await fetch_headlines()
+    indicators = await fetch_indicators()
+    prompt = PROMPT_TEMPLATE.format(
+        persona=PERSONA, payload=_payload(raw_sections, indicators)
+    )
+
     base = (settings.anthropic_base_url or "").rstrip("/")
     headers = {
         "x-api-key": settings.anthropic_api_key or "",
@@ -143,28 +152,36 @@ async def selftest() -> dict:
     }
     body = {
         "model": settings.llm_model,
-        "max_tokens": 16,
-        "messages": [{"role": "user", "content": "Reply with the single word: ok"}],
+        "max_tokens": 4000,
+        "messages": [{"role": "user", "content": prompt}],
     }
     url = f"{base}/v1/messages"
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=90.0) as client:
             r = await client.post(url, headers=headers, json=body)
-        return {
-            "enabled": True,
-            "model": settings.llm_model,
-            "url": url,
-            "status_code": r.status_code,
-            "body_snippet": r.text[:800],
-        }
     except Exception as exc:  # noqa: BLE001
-        return {
-            "enabled": True,
-            "model": settings.llm_model,
-            "url": url,
-            "error_type": type(exc).__name__,
-            "error": str(exc)[:800],
-        }
+        return {"enabled": True, "url": url, "error_type": type(exc).__name__,
+                "error": str(exc)[:800]}
+
+    out: dict = {
+        "enabled": True,
+        "model": settings.llm_model,
+        "status_code": r.status_code,
+        "prompt_chars": len(prompt),
+    }
+    if r.status_code != 200:
+        out["body_snippet"] = r.text[:800]
+        return out
+    data = r.json()
+    parts = data.get("content") or []
+    text = "".join(p.get("text", "") for p in parts if p.get("type") == "text")
+    out["stop_reason"] = data.get("stop_reason")
+    out["usage"] = data.get("usage")
+    out["text_chars"] = len(text)
+    out["text_head"] = text[:300]
+    out["text_tail"] = text[-300:]
+    out["parsed_ok"] = _extract_json(text) is not None
+    return out
 
 
 def _merge(raw_sections: list[dict], edited: dict) -> tuple[list[dict], str]:
